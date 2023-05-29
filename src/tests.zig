@@ -45,7 +45,7 @@ test "escapes" {
     }), tmpl.exprs);
 }
 
-test "named" {
+test "named fields" {
     const text = "Hi {{name}} at index #{{index}}";
     const tmpl = Template(text, .{});
     try expectEqualDeep(@as([]const Expression, &.{
@@ -85,7 +85,12 @@ test "for range list" {
         .{ .name = "item" },
         .end,
     }), tmpl.exprs);
-    try t.expectEqualStrings(" 0=a 1=b", try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+
+    const expected = " 0=a 1=b";
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = .{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = @as([]const []const u8, &.{ "a", "b" }) }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = [_][]const u8{ "a", "b" } }));
 }
 
 test "for range multiple" {
@@ -109,16 +114,21 @@ test "for range multiple" {
         .end,
         .end,
     }), tmpl.exprs);
-    try t.expectEqualStrings(
+
+    const expected =
         \\0,a,0
         \\0,a,1
         \\1,b,0
         \\1,b,1
         \\
-    , try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+    ;
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = .{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = @as([]const []const u8, &.{ "a", "b" }) }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = [_][]const u8{ "a", "b" } }));
 }
 
-test "if" {
+test "loop with nested if" {
     const text =
         \\{{ for(list, 0..) |item, index| }}
         \\  {{index}}={{item}}
@@ -137,7 +147,33 @@ test "if" {
         .end,
     }), tmpl.exprs);
 
-    try t.expectEqualStrings("0=a 1=b", try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+    const expected = "0=a 1=b";
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = &.{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = .{ "a", "b" } }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = @as([]const []const u8, &.{ "a", "b" }) }));
+    try t.expectEqualStrings(expected, try tmpl.bufPrint(&test_buf, .{ .list = [_][]const u8{ "a", "b" } }));
+}
+
+test "if with nested loop" {
+    const text =
+        \\{{ if (x) }}
+        \\  {{ for(list, 0..) |item, index| }}
+        \\  {{index}}={{item}}
+        \\{{ end }}{{end}}
+    ;
+    const tmpl = Template(text, .{});
+    try expectEqualDeep(@as([]const Expression, &.{
+        .{ .if_ = comptime try parseIf("if (x)") },
+        .{ .for_ = comptime try parseFor("for(list, 0..) |item, index|") },
+        .{ .name = "index" },
+        .{ .literal = "=" },
+        .{ .name = "item" },
+        .end,
+        .end,
+    }), tmpl.exprs);
+
+    try t.expectEqualStrings("0=a1=b", try tmpl.bufPrint(&test_buf, .{ .x = true, .list = .{ "a", "b" } }));
+    try t.expectEqualStrings("", try tmpl.bufPrint(&test_buf, .{ .x = false }));
 }
 
 test "if fields" {

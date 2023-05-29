@@ -408,7 +408,7 @@ fn fieldLen(args: anytype, field_name: []const u8) ?usize {
                         .One => return fieldLen(@field(args, @tagName(tag)).*, ""),
                         else => todo(".Pointer .{s}", .{@tagName(info)}),
                     },
-                    .Struct => |info| if (info.is_tuple) return info.len,
+                    .Struct => |info| if (info.is_tuple) return info.fields.len,
                     else => {},
                 }
             },
@@ -605,8 +605,12 @@ pub fn Template(
                                         return;
                                     } else switch (info.size) {
                                         .One => return formatFieldScoped("", scope, writer, @field(args, @tagName(tag)).*),
+                                        .Slice => return formatFieldScoped("", scope, writer, @field(args, @tagName(tag))),
                                         else => todo(".Pointer .{s}", .{@tagName(info.size)}),
                                     },
+                                    .Struct,
+                                    .Array,
+                                    => return formatFieldScoped(field_name, scope, writer, @field(args, @tagName(tag))),
                                     else => |info| todo(".{s}", .{@tagName(info)}),
                                 }
                             },
@@ -634,7 +638,9 @@ pub fn Template(
                     return;
                 } else switch (info.size) {
                     .One => return formatFieldScoped(field_name, scope, writer, args.*),
-                    else => todo(".Pointer .{s}", .{@tagName(info.size)}),
+                    .Slice => if (scope) |sc|
+                        return formatFieldScoped(field_name, scope, writer, args[sc.data.for_.loop_index]),
+                    else => todo(".Pointer .{s} {}", .{ @tagName(info.size), args }),
                 },
                 else => |info| todo(".{s}", .{@tagName(info)}),
             }
@@ -697,7 +703,8 @@ pub fn Template(
                             },
                         }
                     }
-                    break :blk todo("", .{});
+                    std.log.err("missing field '{s}'", .{n});
+                    return error.MissingField;
                 },
                 .number => |n| n,
                 else => |e| todo("{}", .{e}),
